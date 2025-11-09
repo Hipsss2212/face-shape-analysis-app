@@ -434,39 +434,45 @@ export const getHairstyleRecommendations = (faceShape) => {
 };
 
 // Draw landmarks on canvas with measurements
-export const drawLandmarks = (ctx, landmarks, canvas, faceShape, measurements, confidence, secondBestShape, scoreDifference, measurementQuality) => {
+export const drawLandmarks = (ctx, landmarks, canvas, faceShape, measurements, confidence, secondBestShape, scoreDifference, measurementQuality, showLandmarks = true, showMeasurements = true, imageElement = null) => {
   // Clear the canvas before drawing new landmarks
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw face landmarks as points
-  for (const landmark of landmarks) {
-    ctx.beginPath();
-    ctx.arc(landmark.x, landmark.y, 2, 0, 2 * Math.PI);
+  // Draw original image first if provided
+  if (imageElement) {
+    ctx.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
+  }
+
+  // Draw face landmarks as points (smaller and less intrusive)
+  if (showLandmarks) {
     ctx.fillStyle = '#FF0000'; // Red color for landmarks
-    ctx.fill();
+    for (const landmark of landmarks) {
+      ctx.beginPath();
+      ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 1.5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
   }
 
   // Helper function to draw lines between landmarks
   const drawLine = (p1, p2, color = '#00FF00', lineWidth = 2) => {
     ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
+    ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+    ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctx.stroke();
   };
 
-  // Draw measurement lines
-  drawLine(landmarks[10], landmarks[152], '#00FFFF'); // Face Length
-  drawLine(landmarks[132], landmarks[361], '#FF00FF'); // Face Width
-  drawLine(landmarks[123], landmarks[352], '#FFFF00'); // Cheekbone Width
-  drawLine(landmarks[58], landmarks[288], '#00FF00'); // Jaw Width
-  drawLine(landmarks[132], landmarks[361], '#FF4500'); // Chin Top Width
-  drawLine(landmarks[58], landmarks[288], '#8A2BE2'); // Chin Bottom Width
-  drawLine(landmarks[93], landmarks[323], '#ADFF2F'); // Chin Mid Width
-  drawLine(landmarks[362], landmarks[33], '#FF69B4'); // Eye Distance
-  drawLine(landmarks[129], landmarks[358], '#DA70D6'); // Nose Width
-  drawLine(landmarks[70], landmarks[300], '#4682B4'); // Forehead Width
+  // Draw measurement lines only if showMeasurements is true
+  if (showMeasurements) {
+    drawLine(landmarks[10], landmarks[152], '#00FFFF', 2); // Face Length
+    drawLine(landmarks[132], landmarks[361], '#FF00FF', 2); // Face Width
+    drawLine(landmarks[123], landmarks[352], '#FFFF00', 2); // Cheekbone Width
+    drawLine(landmarks[58], landmarks[288], '#00FF00', 2); // Jaw Width
+    drawLine(landmarks[362], landmarks[33], '#FF69B4', 2); // Eye Distance
+    drawLine(landmarks[129], landmarks[358], '#DA70D6', 2); // Nose Width
+    drawLine(landmarks[70], landmarks[300], '#4682B4', 2); // Forehead Width
+  }
 
   // Draw measurements and labels
   ctx.font = '14px Arial';
@@ -475,57 +481,99 @@ export const drawLandmarks = (ctx, landmarks, canvas, faceShape, measurements, c
   ctx.lineWidth = 2;
 
   const drawMeasurement = (label, value, p1, p2, color, offsetX, offsetY) => {
-    const midX = (p1.x + p2.x) / 2 + offsetX;
-    const midY = (p1.y + p2.y) / 2 + offsetY;
-    ctx.strokeStyle = color; // Set stroke color for the line
+    const x1 = p1.x * canvas.width;
+    const y1 = p1.y * canvas.height;
+    const x2 = p2.x * canvas.width;
+    const y2 = p2.y * canvas.height;
+    
+    // Draw line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    ctx.fillStyle = color; // Set fill color for the text
-    ctx.fillText(`${label}: ${value.toFixed(1)}px`, midX, midY);
+    // Calculate midpoint with offset
+    const midX = (x1 + x2) / 2 + offsetX;
+    const midY = (y1 + y2) / 2 + offsetY;
+    
+    // Draw text with background for better visibility
+    ctx.font = 'bold 11px Arial';
+    const text = `${label}: ${value.toFixed(1)}`;
+    const textMetrics = ctx.measureText(text);
+    const textWidth = textMetrics.width;
+    const textHeight = 12;
+    const padding = 4;
+    
+    // Draw background rectangle
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(midX - textWidth / 2 - padding, midY - textHeight / 2 - padding, textWidth + padding * 2, textHeight + padding * 2);
+    
+    // Draw text
+    ctx.fillStyle = color;
+    ctx.fillText(text, midX - textWidth / 2, midY + textHeight / 2 - 2);
   };
 
   // Use distinct offsets for each measurement to prevent overlapping
-  drawMeasurement('Face Length', measurements.faceLength, landmarks[10], landmarks[152], '#00FFFF', -measurements.faceWidth / 2 - 100, 0); 
-  drawMeasurement('Face Width', measurements.faceWidth, landmarks[132], landmarks[361], '#FF00FF', 0, measurements.faceLength / 2 + 30);
-  drawMeasurement('Cheekbone Width', measurements.cheekboneWidth, landmarks[123], landmarks[352], '#FFFF00', 0, -measurements.faceLength / 2 - 30);
-  drawMeasurement('Jaw Width', measurements.jawWidth, landmarks[58], landmarks[288], '#00FF00', 0, measurements.faceLength / 2 + 60);
-  drawMeasurement('Chin Top Width', measurements.chinTopWidth, landmarks[132], landmarks[361], '#FF4500', 0, measurements.faceLength / 2 + 90);
-  drawMeasurement('Chin Bottom Width', measurements.chinBottomWidth, landmarks[58], landmarks[288], '#8A2BE2', 0, measurements.faceLength / 2 + 120);
-  drawMeasurement('Chin Mid Width', measurements.chinMidWidth, landmarks[93], landmarks[323], '#ADFF2F', 0, measurements.faceLength / 2 + 150);
-  drawMeasurement('Eye Dist', measurements.eyeDistance, landmarks[362], landmarks[33], '#FF69B4', 0, -measurements.faceLength / 2 - 60);
-  drawMeasurement('Nose Width', measurements.noseWidth, landmarks[129], landmarks[358], '#DA70D6', 0, -measurements.faceLength / 2 - 90);
-  drawMeasurement('Forehead Width', measurements.foreheadWidth, landmarks[70], landmarks[300], '#4682B4', 0, -measurements.faceLength / 2 - 120);
-
-  // Draw face shape and confidence information
-  ctx.font = '16px Arial';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 3;
-  
-  const shapeText = `Detected Face Shape: ${faceShape}`;
-  const confidenceText = `Confidence: ${confidence}%`;
-  const qualityText = `Measurement Quality: ${(measurementQuality * 100).toFixed(0)}%`;
-  
-  ctx.strokeText(shapeText, 10, canvas.height - 60);
-  ctx.fillText(shapeText, 10, canvas.height - 60);
-  
-  ctx.strokeText(confidenceText, 10, canvas.height - 40);
-  ctx.fillText(confidenceText, 10, canvas.height - 40);
-  
-  ctx.strokeText(qualityText, 10, canvas.height - 20);
-  ctx.fillText(qualityText, 10, canvas.height - 20);
-
-  // Show second best shape if available
-  if (secondBestShape !== 'Unknown' && secondBestShape !== faceShape) {
-    const secondText = `Second Best: ${secondBestShape} (${(scoreDifference * 100).toFixed(1)}% difference)`;
-    ctx.strokeText(secondText, 10, canvas.height - 80);
-    ctx.fillText(secondText, 10, canvas.height - 80);
+  if (showMeasurements) {
+    const offset = 30; // Fixed offset in pixels
+    
+    // Face Length - left side
+    drawMeasurement('Length', measurements.faceLength, landmarks[10], landmarks[152], '#00FFFF', -offset, 0); 
+    
+    // Face Width - bottom
+    drawMeasurement('Width', measurements.faceWidth, landmarks[132], landmarks[361], '#FF00FF', 0, offset);
+    
+    // Cheekbone - top
+    drawMeasurement('Cheek', measurements.cheekboneWidth, landmarks[123], landmarks[352], '#FFFF00', 0, -offset);
+    
+    // Jaw Width - bottom right
+    drawMeasurement('Jaw', measurements.jawWidth, landmarks[58], landmarks[288], '#00FF00', offset, offset);
+    
+    // Eye Distance - top left
+    drawMeasurement('Eyes', measurements.eyeDistance, landmarks[362], landmarks[33], '#FF69B4', -offset, -offset);
+    
+    // Nose Width - center top
+    drawMeasurement('Nose', measurements.noseWidth, landmarks[129], landmarks[358], '#DA70D6', 0, -offset * 1.5);
+    
+    // Forehead - top center
+    drawMeasurement('Forehead', measurements.foreheadWidth, landmarks[70], landmarks[300], '#4682B4', 0, -offset * 2);
   }
 
-  // Draw face ratio information
-  ctx.font = '14px Arial';
-  ctx.fillText(`Face Ratio (L/W): ${measurements.faceRatio.toFixed(2)}`, 10, canvas.height - 120);
+  // Draw face shape and confidence information at top left with better visibility
+  if (showMeasurements) {
+    ctx.font = 'bold 14px Arial';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 4;
+    
+    const padding = 10;
+    const lineHeight = 20;
+    let yPos = padding + lineHeight;
+    
+    // Background for text
+    const textWidth = 250;
+    const textHeight = 80;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(padding, padding, textWidth, textHeight);
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px Arial';
+    
+    // Face shape
+    ctx.fillText(`Shape: ${faceShape}`, padding + 5, yPos);
+    yPos += lineHeight;
+    
+    // Confidence
+    ctx.fillText(`Confidence: ${confidence}%`, padding + 5, yPos);
+    yPos += lineHeight;
+    
+    // Quality
+    ctx.fillText(`Quality: ${(measurementQuality * 100).toFixed(0)}%`, padding + 5, yPos);
+    yPos += lineHeight;
+    
+    // Face ratio
+    ctx.fillText(`Ratio: ${measurements.faceRatio.toFixed(2)}`, padding + 5, yPos);
+  }
 }; 

@@ -5,6 +5,7 @@ import {
   getHairstyleRecommendations,
   drawLandmarks
 } from '../utils/faceShapeUtils';
+import Chatbox from './Chatbox';
 
 const FaceAnalysis = () => {
   const [selectedImage, setSelectedImage] = useState(null);
@@ -15,6 +16,9 @@ const FaceAnalysis = () => {
   const [opencvReady, setOpencvReady] = useState(false);
   const [mediapipeReady, setMediapipeReady] = useState(false);
   const [canvasCreated, setCanvasCreated] = useState(false);
+  const [chatboxOpen, setChatboxOpen] = useState(false);
+  const [showLandmarks, setShowLandmarks] = useState(true);
+  const [showMeasurements, setShowMeasurements] = useState(true);
 
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -34,52 +38,69 @@ const FaceAnalysis = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Force re-render when analysis result changes
-  useEffect(() => {
-    if (analysisResult && canvasRef.current) {
-      // Trigger a re-render to ensure canvas is displayed
-      setCanvasCreated(true);
-    }
-  }, [analysisResult]);
+  // Force re-render when analysis result changes - removed, handled in draw canvas useEffect
 
   // Draw canvas when analysis result is available
   useEffect(() => {
-    if (analysisResult && canvasRef.current && canvasCreated) {
-      console.log('Redrawing canvas with analysis results...');
+    if (analysisResult && canvasRef.current && selectedImage) {
+      console.log('Drawing canvas with analysis results...');
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
-      
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       // Create image element to draw
       const img = new Image();
       img.onload = () => {
-        // Set canvas dimensions
-        canvas.width = img.width;
-        canvas.height = img.height;
-        
-        // Draw original image
-        ctx.drawImage(img, 0, 0);
-        
-        // Draw landmarks with correct parameter order
-        drawLandmarks(
-          ctx, 
-          analysisResult.landmarks, 
-          canvas, 
-          analysisResult.faceShape.shape, 
-          analysisResult.measurements, 
-          analysisResult.faceShape.confidence, 
-          analysisResult.faceShape.secondBestShape, 
-          analysisResult.faceShape.scoreDiff, 
-          analysisResult.faceShape.quality
-        );
-        
-        console.log('Canvas redrawn successfully');
+        try {
+          // Set canvas dimensions
+          const maxWidth = 800;
+          const maxHeight = 600;
+          let width = img.width;
+          let height = img.height;
+          
+          // Scale down if too large
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = width * ratio;
+            height = height * ratio;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          // Clear canvas first
+          ctx.clearRect(0, 0, width, height);
+          
+          // Draw original image
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Draw landmarks with correct parameter order
+          drawLandmarks(
+            ctx, 
+            analysisResult.landmarks, 
+            canvas, 
+            analysisResult.faceShape.shape, 
+            analysisResult.measurements, 
+            analysisResult.faceShape.confidence, 
+            analysisResult.faceShape.secondBestShape, 
+            analysisResult.faceShape.scoreDiff, 
+            analysisResult.faceShape.quality,
+            showLandmarks,
+            showMeasurements,
+            img
+          );
+          
+          console.log('Canvas drawn successfully');
+          setCanvasCreated(true);
+        } catch (error) {
+          console.error('Error drawing canvas:', error);
+        }
+      };
+      img.onerror = (error) => {
+        console.error('Error loading image:', error);
       };
       img.src = selectedImage;
     }
-  }, [analysisResult, canvasCreated, selectedImage]);
+  }, [analysisResult, selectedImage, showLandmarks, showMeasurements]);
 
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
@@ -250,54 +271,15 @@ const FaceAnalysis = () => {
           // Get hairstyle recommendations
           const hairstyleRecommendations = getHairstyleRecommendations(faceShape.shape);
 
-          // Get or create the display canvas
-          let displayCanvas = canvasRef.current;
-          
-          if (!displayCanvas) {
-            console.log('Canvas ref not found, creating new canvas element...');
-            displayCanvas = document.createElement('canvas');
-            displayCanvas.className = 'max-w-full h-auto border border-gray-200 rounded-lg';
-            displayCanvas.style.display = 'block';
-            const canvasContainer = document.getElementById('canvas-container');
-            if (canvasContainer) {
-              canvasContainer.innerHTML = ''; // Clear existing content
-              canvasContainer.appendChild(displayCanvas);
-              canvasRef.current = displayCanvas;
-              console.log('New canvas element created and appended.');
-            } else {
-              console.error('Canvas container not found!');
-            }
-          }
-          
-          // Set canvas dimensions and draw landmarks
-          if (displayCanvas) {
-            displayCanvas.width = img.width;
-            displayCanvas.height = img.height;
-            const ctx = displayCanvas.getContext('2d');
-            
-            // Draw the original image
-            ctx.drawImage(img, 0, 0);
-            
-            // Draw landmarks and measurements
-            drawLandmarks(
-              ctx, 
-              landmarks, 
-              displayCanvas, 
-              faceShape.shape, 
-              measurements, 
-              faceShape.confidence, 
-              faceShape.secondBestShape, 
-              faceShape.scoreDiff, 
-              faceShape.quality
-            );
-          }
-          
+          // Set analysis result first
           setAnalysisResult({
             landmarks,
             measurements,
             faceShape,
             hairstyleRecommendations,
           });
+          
+          // Canvas will be drawn in useEffect after state is set
           setCanvasCreated(true);
 
         } catch (innerError) {
@@ -573,22 +555,68 @@ const FaceAnalysis = () => {
                   
                   {/* Canvas */}
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Facial Landmarks</h3>
-                    <div id="canvas-container" className="flex flex-col items-center justify-center">
-                      {canvasCreated && canvasRef.current ? (
-                        <div className="w-full flex justify-center">
-                          <canvas 
-                            ref={canvasRef} 
-                            className="max-w-full h-auto border border-gray-200 rounded-lg shadow-sm" 
-                            style={{maxHeight: '60vh', maxWidth: '100%'}}
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">
-                          {analysisResult ? 'Processing canvas...' : 'Canvas will appear here after analysis'}
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Facial Landmarks</h3>
+                      {analysisResult && (
+                        <div className="flex items-center space-x-4">
+                          {/* Toggle Landmarks */}
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showLandmarks}
+                              onChange={(e) => setShowLandmarks(e.target.checked)}
+                              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700">Landmarks</span>
+                          </label>
+                          {/* Toggle Measurements */}
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showMeasurements}
+                              onChange={(e) => setShowMeasurements(e.target.checked)}
+                              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700">Measurements</span>
+                          </label>
                         </div>
                       )}
                     </div>
+                    <div id="canvas-container" className="flex flex-col items-center justify-center bg-gray-50 rounded-lg p-4">
+                      {analysisResult ? (
+                        <>
+                          <canvas 
+                            ref={canvasRef} 
+                            className="max-w-full h-auto border border-gray-200 rounded-lg shadow-sm bg-white" 
+                            style={{
+                              maxHeight: '60vh', 
+                              maxWidth: '100%',
+                              display: canvasCreated ? 'block' : 'none'
+                            }}
+                          />
+                          {!canvasCreated && (
+                            <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">
+                              <div className="text-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-2"></div>
+                                <p>Preparing visualization...</p>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">
+                          <p>Canvas will appear here after analysis</p>
+                        </div>
+                      )}
+                    </div>
+                    {analysisResult && (
+                      <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                        <p className="text-xs text-gray-600">
+                          <span className="font-semibold">468 landmarks</span> detected • 
+                          <span className="font-semibold"> {analysisResult.landmarks.length}</span> points shown
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Measurements */}
@@ -694,11 +722,33 @@ const FaceAnalysis = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Chatbox Button */}
+                {analysisResult && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={() => setChatboxOpen(true)}
+                      className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg shadow-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 flex items-center space-x-2 font-semibold"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <span>Tư vấn với AI</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Chatbox Component */}
+      <Chatbox
+        analysisResult={analysisResult}
+        isOpen={chatboxOpen}
+        onClose={() => setChatboxOpen(false)}
+      />
     </div>
   );
 };
